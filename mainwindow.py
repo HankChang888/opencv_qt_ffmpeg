@@ -45,6 +45,12 @@ class MainUi(QMainWindow):
 
 		self.thread = VideoThreadFFMpeg(video_src, self.image_display_width, self.image_display_height)
 		self.thread.ffmpeg_change_pixmap_signal.connect(self.update_ffmpeg_image)
+
+		if raw_socket_lib.set_raw_socket_init(ctypes.c_char_p(default_network_if.encode('utf-8'))) == -1:
+			print("raw socket init failed")
+		else:
+			print("raw socket init succeeded")
+
 		self.thread.send_rgb_frame_signal.connect(self.send_raw_image)
 
 		# start the thread

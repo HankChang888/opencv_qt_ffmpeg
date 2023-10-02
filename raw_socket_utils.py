@@ -1,14 +1,27 @@
 import socket
 import threading
 import time
+import ctypes
+import binascii
+import array
 from global_def import *
 
+# Import ctypes and load the C library
+raw_socket_lib = ctypes.CDLL('./raw_socket.so')
+raw_socket_lib.send_raw_socket_packet.argtypes = [ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int]
+raw_socket_lib.send_raw_socket_packet.restype = ctypes.c_int
+raw_socket_lib.set_raw_socket_init.argtypes = [ctypes.c_char_p]
+raw_socket_lib.set_raw_socket_init.restype = ctypes.c_int
 
 def send_raw_socket_packet( data, network_if=default_network_if, src=default_src, dst=default_dst, proto=default_proto):
-	# ETH_P_ALL = 3
-	# s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_ALL))
-	# s.bind((network_if, 0))
-	raw_socket.sendall(dst + src + proto + data)
+
+	combined_data = dst + src + proto + data
+	packet_sz = len(combined_data)
+	packet_data_buffer = (ctypes.c_ubyte * packet_sz).from_buffer(bytearray(combined_data))
+
+	if raw_socket_lib.send_raw_socket_packet(packet_data_buffer, packet_sz) == -1:
+		print("Sending failed")
+
 	#s.close()
 
 
