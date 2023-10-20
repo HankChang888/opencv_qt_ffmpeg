@@ -13,7 +13,7 @@ class MainUi(QMainWindow):
 		self.setWindowTitle("Qt static label demo")
 		self.window = QWidget(self)
 		self.setCentralWidget(self.window)
-        
+
 		self.send_raw_over_count = 0
 		self.send_raw_under_count = 0
 
@@ -34,8 +34,8 @@ class MainUi(QMainWindow):
 		self.frame_total = 0
 
 		self.image_label = QLabel(self.window)
-		self.image_display_width = 1280 #640 1280
-		self.image_display_height = 720 #480 720
+		self.image_display_width = 640 #640 1280
+		self.image_display_height = 480 #480 720
 		self.image_label.resize(self.image_display_width, self.image_display_height)
 		# self.image_label.setText("TEST")
 		grid_layout = QVBoxLayout()
