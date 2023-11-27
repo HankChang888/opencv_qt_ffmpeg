@@ -5,7 +5,10 @@ from PyQt5.QtWidgets import QMainWindow, QGridLayout, QFrame, QLabel, QWidget
 from videothread_ffmpeg import *
 
 video_src = "color_bar_test.mp4" #720P
-
+#video_src = "/home/venom/Videos/RGB.mp4" #480P
+#video_src = "/home/venom/Videos/character.mp4"
+#video_src = "/home/venom/Videos/BlackChat.mp4"
+#video_src = "/home/venom/Videos/RED.mp4"
 class MainUi(QMainWindow):
 	def __init__(self):
 		super().__init__()
@@ -34,8 +37,8 @@ class MainUi(QMainWindow):
 		self.frame_total = 0
 
 		self.image_label = QLabel(self.window)
-		self.image_display_width = 640 #640 1280
-		self.image_display_height = 480 #480 720
+		self.image_display_width = 1920 #640 1280
+		self.image_display_height = 1080 #480 720
 		self.image_label.resize(self.image_display_width, self.image_display_height)
 		# self.image_label.setText("TEST")
 		grid_layout = QVBoxLayout()

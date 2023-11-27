@@ -31,11 +31,17 @@ class VideoThreadFFMpeg(QThread):
                    '-stream_loop', '-1',
                    '-loglevel', 'error',
                    '-hwaccel', 'auto',
-                   '-re',
+                   #'-re',
                    '-i', self.video_src,
                    '-f', 'image2pipe',
                    '-pix_fmt', 'rgb24',
-                   '-vcodec', 'rawvideo', '-vf', scale_factor, '-']
+                   '-vcodec', 'rawvideo',
+                   '-vf',scale_factor,
+                   #'-pix_fmt', 'bgr24',
+                   #'-vf',scale_factor + ',hflip,vflip',
+                   #'-r','1/1',#fps
+                   '-']
+        log.debug("cmd:%s",command)
         pipe = subprocess.Popen(command, stdout=subprocess.PIPE, bufsize=10 ** 8)
         while True:
             try:

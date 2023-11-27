@@ -3,7 +3,8 @@ import socket
 log = log_utils.logging_init(__file__)
 
 ETH_P_ALL = 3
-default_network_if = 'eth0'
+#default_network_if = 'eth0'
+default_network_if = 'eno2'
 default_src = b'\x00\x22\x33\x44\x55\x66'
 default_dst = b'\x11\x22\x33\x44\x55\x66'
 default_proto = b'\x88\xb5'
