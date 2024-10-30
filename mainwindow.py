@@ -3,9 +3,12 @@ from PyQt5.QtCore import QThread, pyqtSignal, QDateTime, QObject
 from PyQt5.QtWidgets import QMainWindow, QGridLayout, QFrame, QLabel, QWidget
 # from videothread import *
 from videothread_ffmpeg import *
+from videothread_gst import *
 
-video_src = "color_bar_test.mp4" #720P
-#video_src = "/home/venom/Videos/RGB.mp4" #480P
+#video_src = "color_bar_test.mp4" #720P
+#video_src = "countdown.mp4"
+#video_src = "countdown_480p.mp4"
+video_src = "dance.mp4" #480P
 #video_src = "/home/venom/Videos/character.mp4"
 #video_src = "/home/venom/Videos/BlackChat.mp4"
 #video_src = "/home/venom/Videos/RED.mp4"
@@ -37,8 +40,8 @@ class MainUi(QMainWindow):
 		self.frame_total = 0
 
 		self.image_label = QLabel(self.window)
-		self.image_display_width = 1920 #640 1280
-		self.image_display_height = 1080 #480 720
+		self.image_display_width = 640 #640 #1280
+		self.image_display_height = 480 #480 #720
 		self.image_label.resize(self.image_display_width, self.image_display_height)
 		# self.image_label.setText("TEST")
 		grid_layout = QVBoxLayout()
@@ -49,15 +52,20 @@ class MainUi(QMainWindow):
 		# connect its signal to the update_image slot
 		# self.thread.change_pixmap_signal.connect(self.update_image)
 
-		self.thread = VideoThreadFFMpeg(video_src, self.image_display_width, self.image_display_height)
-		self.thread.ffmpeg_change_pixmap_signal.connect(self.update_ffmpeg_image)
+		#self.thread = VideoThreadFFMpeg(video_src, self.image_display_width, self.image_display_height)
+		#self.thread.change_pixmap_signal.connect(self.update_ffmpeg_image)
+
+		self.thread = VideoThreadGStreamer(video_src, self.image_display_width, self.image_display_height)
+		self.thread.change_pixmap_signal.connect(self.update_ffmpeg_image)
+
+
 		#self.thread.video_finished_signal.connect(self.restart_video)
 		if raw_socket_lib.set_raw_socket_init(ctypes.c_char_p(default_network_if.encode('utf-8'))) == -1:
 			print("raw socket init failed")
 		else:
 			print("raw socket init succeeded")
 
-		self.thread.send_rgb_frame_signal.connect(self.send_raw_image)
+		#self.thread.send_rgb_frame_signal.connect(self.send_raw_image)
 
 		# start the thread
 		self.thread.setPriority(QThread.HighestPriority)
@@ -143,8 +151,8 @@ class MainUi(QMainWindow):
 		self.send_raw_avg_time = self.send_raw_total_time/(self.frame_total)
 
 		#log.debug("FID:%s", frame_id)
-		log.debug("send raw delta time: %s", self.send_raw_delta_time)
+		#log.debug("send raw delta time: %s", self.send_raw_delta_time)
 		#log.debug("Maximum delta time: %s", self.send_raw_max_time)
 		#log.debug("Minimum delta time: %s", self.send_raw_min_time)
 		#log.debug("send raw tatal time: %s", self.send_raw_total_time)
-		log.debug("send raw avg delta: %s", self.send_raw_avg_time)
+		#log.debug("send raw avg delta: %s", self.send_raw_avg_time)

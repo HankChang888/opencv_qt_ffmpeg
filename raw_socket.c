@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -13,11 +15,17 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
+#include <time.h>
 
 #define MAX_FRAME_SIZE 1476
 //#define MAX_FRAME_SIZE 1024
 #define CMD_HEAD_SZ 20
 #define MAX_DATA_LENGTH 1500
+
+pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int raw_sock = -1;
 unsigned short int packet_index = 0;
@@ -104,7 +112,7 @@ int send_frame_packet(unsigned char *data, unsigned int length,unsigned int offs
     unsigned char crc[4] = {0xCC,0xCC,0xCC,0xCC};
     
     packet_sz = length+CMD_HEAD_SZ+4;
-	
+
     if (packet_sz > MAX_DATA_LENGTH) {
         printf("Send_frame_packet , Data too long to fit into the buffer.sz: %u\n",packet_sz);
         return -1;
@@ -124,12 +132,11 @@ int send_frame_packet(unsigned char *data, unsigned int length,unsigned int offs
     memcpy(combined_data,brocast_cmd,20);
     memcpy(combined_data+20,data,length);
     memcpy(combined_data+length+20,crc,4);
-
+    
     if (send_raw_socket_packet(combined_data, packet_sz) == -1){
         printf("Sending failed");
-        return -1;
+	return -1;
     }
-
     return 1;
 }
 
@@ -157,17 +164,59 @@ int send_frame_sync(void)
 
     return 1;
 }
+
+void busy_wait_ns(long ns) 
+{
+    struct timespec start, current;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    do {
+        clock_gettime(CLOCK_MONOTONIC, &current);
+    } while ((current.tv_sec - start.tv_sec) * 1000000000L +
+             (current.tv_nsec - start.tv_nsec) < ns);
+}
+
+void nsleep(long ns)
+{
+    struct timespec req;
+
+    req.tv_sec = ns / 1000000000;
+    req.tv_nsec = ns % 1000000000;
+
+    if (nanosleep(&req, NULL) == -1) {
+        perror("nanosleep failed");
+    } else {
+        //printf("Sleep completed successfully.\n");
+    }
+}
+
 int send_rgb_frame_with_raw_socket(const unsigned char *rgb_frame, int frame_sz, unsigned int frame_id) 
 {    
+    #define DF_CPU_SET_NO 0
     unsigned int i = 0;
     unsigned int segment_length = 0;
     unsigned char raw_socket_packet[MAX_DATA_LENGTH];
     unsigned int offset = 0;
     unsigned int data_length = 0;
+    cpu_set_t mask;
+
+    //printf("sched_getcpu = %d\n", sched_getcpu());
+    CPU_ZERO(&mask);
+    CPU_SET(DF_CPU_SET_NO, &mask);
+    if (sched_setaffinity(0, sizeof(cpu_set_t), &mask) == -1) {
+        perror("sched_setaffinity");
+    }
+
+    if (sched_getcpu()!=DF_CPU_SET_NO){
+	printf("sched_getcpu error\n");
+        while(1);
+    }	
+    
+    pthread_mutex_lock(&send_mutex);
 	
     if (frame_id > 0xffff) {
         printf("frame_id out of 0xffff\n");
-        return -1;
+        pthread_mutex_unlock(&send_mutex);
+	return -1;
     }
     
     while (i < frame_sz) {
@@ -181,16 +230,21 @@ int send_rgb_frame_with_raw_socket(const unsigned char *rgb_frame, int frame_sz,
         
         if (data_length > MAX_DATA_LENGTH) {
             printf("Send rgb frame , Data too long to fit into the buffer. sz:%u \n",data_length);
-            return -1;
+            pthread_mutex_unlock(&send_mutex);
+	    return -1;
         }
         
         memcpy(raw_socket_packet, rgb_frame + i, segment_length);
         send_frame_packet(raw_socket_packet, data_length, offset + 0x000F0000);
         offset +=data_length;
-        //usleep(1000*20);
+       
+        busy_wait_ns(4000);
+	//busy_wait_ns(5000);
+	//nsleep(1);
         i += MAX_FRAME_SIZE;
     }
     //usleep(1000*1000);
     send_frame_sync();
+    pthread_mutex_unlock(&send_mutex);
     return 1;
 }
