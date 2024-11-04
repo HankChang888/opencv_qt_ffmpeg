@@ -1,5 +1,4 @@
 import platform
-from PyQt5 import QtGui
 from PyQt5.QtCore import pyqtSignal, QThread
 import numpy as np
 import gi
@@ -9,11 +8,9 @@ from threading import Lock
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
 
-send_lock = Lock()
-
 # Initialize GStreamer
 Gst.init(None)
-
+send_lock = Lock()
 
 class VideoThreadGStreamer(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
@@ -25,83 +22,101 @@ class VideoThreadGStreamer(QThread):
         self.display_width = display_width
         self.display_height = display_height
         self.frame_count = 0
-        self.videosink = "glimagesink"  # Default videosink set to glimagesink for x86 architecture
+        self.paused = False
+        self.pipeline = None
+        self.force_stop = False  # Controls complete stop status
 
-    def run(self):
-        width = str(self.display_width)
-        height = str(self.display_height)
+    def build_pipeline(self):
+        """Build the GStreamer pipeline"""
+        width, height = str(self.display_width), str(self.display_height)
         arch = platform.machine()
 
-        # Select appropriate videosink depending on the architecture
+        # Choose the appropriate pipeline configuration
         if 'x86' in arch:
-            # Use glimagesink for x86 architecture
             pipeline_str = (
-                f'filesrc location={self.video_src} ! decodebin ! videoconvert ! videoscale ! tee name=t '
-                f't. ! queue ! video/x-raw,format=RGB,width={width},height={height} ! appsink name=appsink_sink '  # Explicitly naming appsink
-                f't. ! queue ! video/x-raw,width={width},height={height},framerate=30/1 ! {self.videosink} sync=True'
+                f'filesrc location={self.video_src} ! decodebin ! videoconvert ! videoscale ! '
+                f'video/x-raw,format=RGB,width={width},height={height} ! appsink name=appsink_sink'
             )
         else:
-            #    # For non-x86 architecture (e.g., ARM with I.MX platform), use hardware decoding
             pipeline_str = (
                 f'filesrc location={self.video_src} ! qtdemux name=d d.video_0 ! queue ! h264parse ! vpudec ! '
                 f'imxvideoconvert_g2d ! videoscale ! video/x-raw,width={width},height={height} ! videoconvert ! '
                 f'video/x-raw,format=RGB ! videorate ! video/x-raw,framerate=30/1 ! appsink name=appsink_sink'
             )
 
-        # Create GStreamer pipeline
-        pipeline = Gst.parse_launch(pipeline_str)
+        # Create and return the GStreamer pipeline
+        self.pipeline = Gst.parse_launch(pipeline_str)
 
-        # Retrieve the appsink element and set properties
-        appsink = pipeline.get_by_name('appsink_sink')  # Ensure we get the correct appsink element
-        appsink.set_property('emit-signals', True)  # Enable signal emission for frame data capture
-        appsink.set_property('sync', True)  # Prevent appsink from blocking the pipeline
-        appsink.connect('new-sample', self.on_new_sample)  # Connect the new-sample signal handler
+        # Set appsink properties and connect signal
+        appsink = self.pipeline.get_by_name('appsink_sink')
+        appsink.set_property('emit-signals', True)
+        appsink.set_property('sync', True)
+        appsink.connect('new-sample', self.on_new_sample)
 
-        pipeline.set_state(Gst.State.PLAYING)
+    def run(self):
+        # Build the pipeline
+        self.build_pipeline()
+        self.pipeline.set_state(Gst.State.PLAYING)
+        bus = self.pipeline.get_bus()
 
-        # GStreamer main loop to handle bus messages
-        bus = pipeline.get_bus()
-        while True:
+        while not self.force_stop:
+            if self.paused:
+                self.pipeline.set_state(Gst.State.PAUSED)
+            else:
+                self.pipeline.set_state(Gst.State.PLAYING)
+
             msg = bus.timed_pop_filtered(100 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
-
-            if msg is not None:
+            if msg:
                 if msg.type == Gst.MessageType.ERROR:
                     err, debug = msg.parse_error()
-                    if err:
-                        print(f'Error: {err}, {debug}')
+                    print(f'Error: {err}, {debug}')
                     break
-
                 elif msg.type == Gst.MessageType.EOS:
                     print('End of stream, restarting...')
                     break
-            else:
-                continue
 
-        # Stop the pipeline
-        pipeline.set_state(Gst.State.NULL)
+        # Stop and clear the pipeline
+        self.pipeline.set_state(Gst.State.NULL)
+        self.pipeline = None
 
     def on_new_sample(self, sink):
-        # Capture frame data from appsink
         sample = sink.emit('pull-sample')
         buf = sample.get_buffer()
         caps = sample.get_caps()
         width = caps.get_structure(0).get_value('width')
         height = caps.get_structure(0).get_value('height')
-        # Extract frame data from the buffer
         result, map_info = buf.map(Gst.MapFlags.READ)
-        if result:
-            frame_data = np.frombuffer(map_info.data, dtype=np.uint8)
-            frame_data = frame_data.reshape((height, width, 3))
 
-            # Send frame data using raw socket
+        if result:
+            frame_data = np.frombuffer(map_info.data, dtype=np.uint8).reshape((height, width, 3))
             with send_lock:
                 send_rgb_frame_with_raw_socket(frame_data.tobytes(), self.frame_count)
 
-            # Emit signal to update the UI
             self.change_pixmap_signal.emit(frame_data)
             buf.unmap(map_info)
 
-        self.frame_count += 1
-        if self.frame_count > 0xffff:
-            self.frame_count = 0
+        self.frame_count = (self.frame_count + 1) % 0xffff
         return Gst.FlowReturn.OK
+
+    def pause(self):
+        """Pause video playback"""
+        self.paused = True
+
+    def resume(self):
+        """Resume video playback"""
+        self.paused = False
+
+    def stop(self):
+        """Stop video playback and completely release the pipeline"""
+        self.paused = False
+        self.force_stop = True
+        self.quit()
+        self.wait()
+        self.pipeline = None
+
+    def restart(self):
+        """Restart video playback"""
+        if self.isRunning():
+            self.stop()
+        self.force_stop = False
+        self.start()
